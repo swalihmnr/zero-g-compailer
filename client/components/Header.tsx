@@ -282,7 +282,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Run Code Button */}
                 <button
-                    onClick={onRun}
+                    onClick={() => onRun()}
                     disabled={isRunning}
                     className="btn-run"
                     title="Run Code (Ctrl + Enter)"

@@ -111,13 +111,14 @@ export const App: React.FC = () => {
     }, [activeTaskId]);
 
     // Run Code Implementation — reads fresh live values and replaces output cleanly
-    const executeCode = useCallback(async (codeToRun?: string) => {
+    const executeCode = useCallback(async (codeToRun?: any) => {
         if (isRunningRef.current) return;
 
-        const currentCode = codeToRun !== undefined ? codeToRun : codeRef.current;
+        // If called from onClick button, codeToRun is a MouseEvent object; guard against that!
+        const currentCode = typeof codeToRun === 'string' ? codeToRun : codeRef.current;
         const currentLang = languageRef.current;
 
-        if (!currentCode || currentCode.trim() === '') {
+        if (!currentCode || typeof currentCode !== 'string' || currentCode.trim() === '') {
             setTerminalEntries([]);
             return;
         }
@@ -288,7 +289,7 @@ export const App: React.FC = () => {
                 onAutoSuggestToggle={setAutoSuggest}
                 onSave={handleSave}
                 onOpenAbout={() => setIsAboutOpen(true)}
-                onRun={executeCode}
+                onRun={() => executeCode()}
                 isRunning={isRunning}
                 isSidebarOpen={isSidebarOpen}
                 onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
@@ -320,7 +321,7 @@ export const App: React.FC = () => {
                                     language={language}
                                     autoSuggest={autoSuggest}
                                     onChange={handleCodeChange}
-                                    onRun={executeCode}
+                                    onRun={() => executeCode()}
                                     isDark={isDark}
                                 />
                             </div>
@@ -364,7 +365,7 @@ export const App: React.FC = () => {
                                 language={language}
                                 autoSuggest={autoSuggest}
                                 onChange={handleCodeChange}
-                                onRun={executeCode}
+                                onRun={() => executeCode()}
                                 isDark={isDark}
                             />
 
