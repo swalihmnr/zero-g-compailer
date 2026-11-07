@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { SupportedLanguage } from '../types';
 import { LANGUAGES } from '../constants';
 import {
-    Play, Save, RotateCcw, PanelLeftClose, PanelLeft,
-    Zap, Sparkles, Columns, Sun, Moon, Code2, ChevronDown
+    Play, Save, PanelLeftClose, PanelLeft,
+    Zap, Sparkles, Columns, Sun, Moon, Code2, ChevronDown, Info
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -14,7 +14,7 @@ interface HeaderProps {
     autoSuggest: boolean;
     onAutoSuggestToggle: (enabled: boolean) => void;
     onSave: () => void;
-    onReset: () => void;
+    onOpenAbout: () => void;
     onRun: () => void;
     isRunning: boolean;
     isSidebarOpen: boolean;
@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
     autoSuggest,
     onAutoSuggestToggle,
     onSave,
-    onReset,
+    onOpenAbout,
     onRun,
     isRunning,
     isSidebarOpen,
@@ -260,13 +260,14 @@ export const Header: React.FC<HeaderProps> = ({
                         : <Moon className="w-4 h-4" style={{ color: 'var(--accent-blue)' }} />}
                 </button>
 
-                {/* Reset Boilerplate */}
+                {/* About Developer & Origin Story */}
                 <button
-                    onClick={onReset}
+                    onClick={onOpenAbout}
                     className="btn-icon"
-                    title="Clear editor code"
+                    title="About Developer & Project Story"
+                    aria-label="About Developer"
                 >
-                    <RotateCcw className="w-4 h-4" />
+                    <Info className="w-4 h-4" style={{ color: 'var(--accent-purple)' }} />
                 </button>
 
                 {/* Save Button */}

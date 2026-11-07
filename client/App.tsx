@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { EditorPanel } from './components/EditorPanel';
 import { TerminalPanel, OutputContent } from './components/TerminalPanel';
+import { AboutModal } from './components/AboutModal';
 import { Trash2 } from 'lucide-react';
 import { SupportedLanguage, TaskItem, TerminalEntry, RunResult } from './types';
 import { LANGUAGES, DEFAULT_TEMPLATES } from './constants';
@@ -55,6 +56,7 @@ export const App: React.FC = () => {
             return saved !== null ? JSON.parse(saved) : false;
         } catch { return false; }
     });
+    const [isAboutOpen, setIsAboutOpen] = useState<boolean>(false);
 
     const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
     const splitOutputRef   = useRef<HTMLDivElement>(null);
@@ -285,7 +287,7 @@ export const App: React.FC = () => {
                 autoSuggest={autoSuggest}
                 onAutoSuggestToggle={setAutoSuggest}
                 onSave={handleSave}
-                onReset={handleReset}
+                onOpenAbout={() => setIsAboutOpen(true)}
                 onRun={executeCode}
                 isRunning={isRunning}
                 isSidebarOpen={isSidebarOpen}
@@ -377,6 +379,12 @@ export const App: React.FC = () => {
                     )}
                 </main>
             </div>
+
+            {/* Developer Story & Details Modal */}
+            <AboutModal
+                isOpen={isAboutOpen}
+                onClose={() => setIsAboutOpen(false)}
+            />
         </div>
     );
 };
