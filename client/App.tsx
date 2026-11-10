@@ -69,6 +69,48 @@ export const App: React.FC = () => {
     const isRunningRef  = useRef<boolean>(isRunning);
     isRunningRef.current= isRunning;
 
+    // Anonymous Visitor ID (Stored in localStorage, generated cleanly)
+    const visitorIdRef = useRef<string>('');
+    useEffect(() => {
+        try {
+            let vid = localStorage.getItem('zerog_visitor_id');
+            if (!vid || !/^[a-f0-9\-]{8,64}$/.test(vid)) {
+                vid = 'v_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36);
+                localStorage.setItem('zerog_visitor_id', vid);
+            }
+            visitorIdRef.current = vid;
+
+            // Send visit beacon to backend
+            fetch('/api/visit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ visitorId: vid })
+            }).catch(() => {});
+
+            // Initialize Socket.IO connection for real-time presence
+            const ioGlobal = (window as any).io;
+            if (typeof ioGlobal === 'function') {
+                const socket = ioGlobal({
+                    path: '/socket.io',
+                    query: { visitorId: vid },
+                    reconnectionAttempts: 5
+                });
+
+                // Heartbeat every 30 seconds
+                const hbTimer = setInterval(() => {
+                    if (socket.connected) {
+                        socket.emit('heartbeat');
+                    }
+                }, 30000);
+
+                return () => {
+                    clearInterval(hbTimer);
+                    socket.disconnect();
+                };
+            }
+        } catch (_) {}
+    }, []);
+
     // Sync theme on <html> element + persist to localStorage
     useEffect(() => {
         document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -130,7 +172,11 @@ export const App: React.FC = () => {
             const res = await fetch('/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: currentCode, language: currentLang })
+                body: JSON.stringify({
+                    code: currentCode,
+                    language: currentLang,
+                    visitorId: visitorIdRef.current || 'unknown'
+                })
             });
 
             const data: RunResult = await res.json();

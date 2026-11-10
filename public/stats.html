@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Zero-G Compiler — Analytics Dashboard</title>
+<link rel="icon" type="image/png" href="/icon.png">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --red: #f85149; --purple: #bc8cff;
+    --yellow: #d29922; --cyan: #39c5cf;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── Login ── */
+  #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 36px; width: 360px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+  }
+  .login-box h2 { margin-bottom: 8px; font-size: 1.35rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .login-box p { color: var(--muted); font-size: 0.85rem; margin-bottom: 22px; }
+  .login-box input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 11px 14px; font-size: 0.95rem;
+    outline: none; margin-bottom: 12px;
+  }
+  .login-box input:focus { border-color: var(--accent); }
+  .login-box button {
+    width: 100%; background: var(--accent); border: none; border-radius: 8px;
+    color: #0d1117; font-weight: 600; font-size: 0.95rem; padding: 11px; cursor: pointer;
+  }
+  .login-box button:hover { opacity: 0.9; }
+  #login-error { color: var(--red); font-size: 0.82rem; margin-top: 10px; display: none; }
+
+  /* ── Dashboard ── */
+  #dashboard { display: none; }
+  header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
+  .badge { background: var(--accent); color: #0d1117; font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; }
+  .pulse-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background-color: var(--green); margin-right: 4px; box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+  .actions { display: flex; align-items: center; gap: 10px; }
+  .refresh-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.8rem;
+  }
+  .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .container { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; }
+
+  /* ── Stat Cards ── */
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px; margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .stat-card .label {
+    color: var(--muted); font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .stat-card .value { font-size: 1.75rem; font-weight: 700; font-family: ui-monospace, monospace; }
+  .stat-card .sub { color: var(--muted); font-size: 0.72rem; margin-top: 4px; }
+  .value.green  { color: var(--green); }
+  .value.accent { color: var(--accent); }
+  .value.purple { color: var(--purple); }
+  .value.yellow { color: var(--yellow); }
+  .value.cyan   { color: var(--cyan); }
+
+  /* ── Grids ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 860px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px;
+  }
+  .panel h3 {
+    font-size: 0.85rem; color: var(--text); text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel h3 span.sub { font-size: 0.7rem; color: var(--muted); text-transform: none; }
+
+  /* ── Bar Charts ── */
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; font-size: 0.82rem; }
+  .bar-label { width: 110px; text-align: right; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; background: var(--bg); border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width 0.4s ease; }
+  .bar-count { width: 40px; color: var(--muted); font-size: 0.78rem; text-align: right; font-family: ui-monospace, monospace; }
+
+  /* ── Sparklines ── */
+  .spark { display: flex; align-items: flex-end; gap: 4px; height: 80px; padding-top: 10px; }
+  .spark-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+  .spark-bar { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .spark-bar.green { background: var(--green); }
+  .spark-label { font-size: 0.62rem; color: var(--muted); font-family: ui-monospace, monospace; }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x: auto; }
+  .events-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .events-table th {
+    text-align: left; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--border);
+    font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .events-table td { padding: 9px 10px; border-bottom: 1px solid #21262d; vertical-align: middle; }
+  .events-table tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 7px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+  .pill.ok { background: rgba(63, 185, 80, 0.15); color: var(--green); border: 1px solid rgba(63, 185, 80, 0.3); }
+  .pill.err { background: rgba(248, 81, 73, 0.15); color: var(--red); border: 1px solid rgba(248, 81, 73, 0.3); }
+  .pill.ret { background: rgba(188, 140, 255, 0.15); color: var(--purple); border: 1px solid rgba(188, 140, 255, 0.3); }
+  .pill.new { background: rgba(57, 197, 207, 0.15); color: var(--cyan); border: 1px solid rgba(57, 197, 207, 0.3); }
+  .mono { font-family: ui-monospace, monospace; font-size: 0.78rem; }
+</style>
+</head>
+<body>
+
+<!-- ── Login ── -->
+<div id="login-screen">
+  <div class="login-box">
+    <h2><span>⚡</span> Zero-G Analytics</h2>
+    <p>Admin Dashboard Authentication</p>
+    <input type="password" id="pwd-input" placeholder="Enter admin password" autocomplete="off"/>
+    <button onclick="tryLogin()">Access Dashboard</button>
+    <div id="login-error">Invalid password. Try again.</div>
+  </div>
+</div>
+
+<!-- ── Dashboard ── -->
+<div id="dashboard">
+  <header>
+    <h1>
+      <span>⚡</span> Zero-G Compiler
+      <span class="badge">STATS</span>
+      <span style="font-size: 0.8rem; font-weight: normal; color: var(--muted); margin-left: 8px;">
+        <span class="pulse-dot"></span> Live Real-time Connected
+      </span>
+    </h1>
+    <div class="actions">
+      <span id="last-updated" style="color:var(--muted); font-size:0.75rem;"></span>
+      <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+      <button class="refresh-btn" onclick="logout()" style="color:var(--red);">Log Out</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Stat Cards -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">Active Users Now <span class="pulse-dot"></span></div>
+        <div class="value green" id="s-active">—</div>
+        <div class="sub">Compiler tabs connected</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Page Visits</div>
+        <div class="value accent" id="s-total-visits">—</div>
+        <div class="sub" id="s-visits-sub">Returning: —</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Unique Visitors</div>
+        <div class="value cyan" id="s-unique">—</div>
+        <div class="sub">Anonymous ID based</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Today's Visitors</div>
+        <div class="value yellow" id="s-today-visitors">—</div>
+        <div class="sub" id="s-week-visitors">This week: —</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Code Runs</div>
+        <div class="value purple" id="s-total-runs">—</div>
+        <div class="sub" id="s-runs-split">✓ — | ✗ —</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Success Rate</div>
+        <div class="value green" id="s-success-rate">—</div>
+        <div class="sub">Execution reliability</div>
+      </div>
+    </div>
+
+    <!-- Charts Row: Last 14 Days Visitors & Runs -->
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Daily Visitors <span class="sub">Last 14 Days</span></h3>
+        <div class="spark" id="spark-visitors"></div>
+      </div>
+      <div class="panel">
+        <h3>Daily Code Executions <span class="sub">Last 14 Days</span></h3>
+        <div class="spark" id="spark-runs"></div>
+      </div>
+    </div>
+
+    <!-- Distributions: Languages, Devices, OS -->
+    <div class="grid-3">
+      <div class="panel">
+        <h3>Languages Used</h3>
+        <div id="chart-languages"></div>
+      </div>
+      <div class="panel">
+        <h3>Devices</h3>
+        <div id="chart-devices"></div>
+      </div>
+      <div class="panel">
+        <h3>Operating Systems</h3>
+        <div id="chart-os"></div>
+      </div>
+    </div>
+
+    <!-- Activity Tables -->
+    <div class="grid-2">
+      <!-- Recent Executions -->
+      <div class="panel">
+        <h3>Recent Code Executions</h3>
+        <div class="table-wrap">
+          <table class="events-table">
+            <thead>
+              <tr>
+                <th>Time</th><th>Language</th><th>Status</th><th>Size</th><th>Device</th>
+              </tr>
+            </thead>
+            <tbody id="table-executions"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Page Visits -->
+      <div class="panel">
+        <h3>Recent Visitors</h3>
+        <div class="table-wrap">
+          <table class="events-table">
+            <thead>
+              <tr>
+                <th>Time</th><th>Visitor ID</th><th>Type</th><th>Device</th><th>IP</th>
+              </tr>
+            </thead>
+            <tbody id="table-visits"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const PASS_KEY = 'zerog_stats_auth';
+let adminSocket = null;
+
+function tryLogin() {
+  const pwd = document.getElementById('pwd-input').value;
+  fetch('/stats/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pwd })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      sessionStorage.setItem(PASS_KEY, pwd);
+      showDashboard();
+    } else {
+      document.getElementById('login-error').style.display = 'block';
+    }
+  }).catch(() => {
+    document.getElementById('login-error').style.display = 'block';
+  });
+}
+
+function logout() {
+  sessionStorage.removeItem(PASS_KEY);
+  location.reload();
+}
+
+document.getElementById('pwd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') tryLogin();
+});
+
+function getAuth() { return sessionStorage.getItem(PASS_KEY) || ''; }
+
+function showDashboard() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  loadData();
+
+  // Connect admin socket for live active user updates (does NOT count as visitor)
+  if (window.io && !adminSocket) {
+    adminSocket = io({
+      path: '/socket.io',
+      query: { admin: 'true' }
+    });
+    adminSocket.on('stats', data => {
+      if (typeof data.activeNow === 'number') {
+        document.getElementById('s-active').textContent = data.activeNow;
+      }
+    });
+  }
+
+  // Periodic poll every 15s to update aggregate charts
+  setInterval(loadData, 15000);
+}
+
+function loadData() {
+  fetch('/stats/data', {
+    headers: { 'x-stats-password': getAuth() }
+  }).then(r => {
+    if (r.status === 401) { logout(); return; }
+    return r.json();
+  }).then(d => {
+    if (!d) return;
+    renderDashboard(d);
+  }).catch(e => console.error('Failed to load stats:', e));
+}
+
+function renderDashboard(d) {
+  document.getElementById('s-active').textContent = d.activeNow ?? 0;
+  document.getElementById('s-total-visits').textContent = (d.totalVisits || 0).toLocaleString();
+  document.getElementById('s-visits-sub').textContent = `Returning: ${(d.returningVisitors || 0).toLocaleString()}`;
+  document.getElementById('s-unique').textContent = (d.uniqueVisitors || 0).toLocaleString();
+  document.getElementById('s-today-visitors').textContent = (d.todayVisitors || 0).toLocaleString();
+  document.getElementById('s-week-visitors').textContent = `This week: ${(d.weekVisitors || 0).toLocaleString()}`;
+  document.getElementById('s-total-runs').textContent = (d.totalRuns || 0).toLocaleString();
+  document.getElementById('s-runs-split').textContent = `✓ ${d.successfulRuns || 0} | ✗ ${d.failedRuns || 0}`;
+  document.getElementById('s-success-rate').textContent = d.successRate || 'N/A';
+  document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+  // Days array (last 14 days)
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const dt = new Date(); dt.setDate(dt.getDate() - i);
+    days.push(dt.toISOString().slice(0, 10));
+  }
+
+  // Sparkline: Daily Visitors
+  const maxVisitors = Math.max(...days.map(day => d.dailyVisitors[day] || 0), 1);
+  document.getElementById('spark-visitors').innerHTML = days.map(day => {
+    const val = d.dailyVisitors[day] || 0;
+    const h = Math.max(2, Math.round((val / maxVisitors) * 64));
+    return `<div class="spark-col">
+      <div class="spark-bar" style="height:${h}px" title="${day}: ${val} visitors"></div>
+      <span class="spark-label">${day.slice(5)}</span>
+    </div>`;
+  }).join('');
+
+  // Sparkline: Daily Executions
+  const maxRuns = Math.max(...days.map(day => d.dailyRuns[day] || 0), 1);
+  document.getElementById('spark-runs').innerHTML = days.map(day => {
+    const val = d.dailyRuns[day] || 0;
+    const h = Math.max(2, Math.round((val / maxRuns) * 64));
+    return `<div class="spark-col">
+      <div class="spark-bar green" style="height:${h}px" title="${day}: ${val} runs"></div>
+      <span class="spark-label">${day.slice(5)}</span>
+    </div>`;
+  }).join('');
+
+  // Distribution helper
+  const renderBars = (elementId, dataMap, colorVar) => {
+    const entries = Object.entries(dataMap || {}).sort((a, b) => b[1] - a[1]);
+    const maxVal = entries[0]?.[1] || 1;
+    const el = document.getElementById(elementId);
+    if (!entries.length) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:0.75rem;padding:8px 0;">No data yet</p>';
+      return;
+    }
+    el.innerHTML = entries.slice(0, 8).map(([key, count]) => `
+      <div class="bar-row">
+        <span class="bar-label" title="${key}">${key}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${(count/maxVal*100).toFixed(1)}%; background:${colorVar};"></div></div>
+        <span class="bar-count">${count}</span>
+      </div>`).join('');
+  };
+
+  renderBars('chart-languages', d.languageBreakdown, 'var(--accent)');
+  renderBars('chart-devices', d.deviceBreakdown, 'var(--purple)');
+  renderBars('chart-os', d.osBreakdown, 'var(--cyan)');
+
+  // Table: Recent Executions
+  const execTable = document.getElementById('table-executions');
+  execTable.innerHTML = (d.recentExecutions || []).length
+    ? d.recentExecutions.map(e => {
+        const time = new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `<tr>
+          <td class="mono" style="color:var(--muted)">${time}</td>
+          <td><span class="pill mono">${e.language}</span></td>
+          <td><span class="pill ${e.success ? 'ok' : 'err'}">${e.success ? '✓ Success' : '✗ Failed'}</span></td>
+          <td class="mono" style="color:var(--muted)">${e.codeLength}B</td>
+          <td style="color:var(--muted)">${e.device}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px;">No executions yet</td></tr>';
+
+  // Table: Recent Visits
+  const visitTable = document.getElementById('table-visits');
+  visitTable.innerHTML = (d.recentVisits || []).length
+    ? d.recentVisits.map(v => {
+        const time = new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const shortVid = v.visitorId ? v.visitorId.slice(0, 10) + '…' : 'unknown';
+        return `<tr>
+          <td class="mono" style="color:var(--muted)">${time}</td>
+          <td class="mono" title="${v.visitorId}">${shortVid}</td>
+          <td><span class="pill ${v.isReturning ? 'ret' : 'new'}">${v.isReturning ? 'Returning' : 'New'}</span></td>
+          <td style="color:var(--muted)">${v.device} · ${v.os}</td>
+          <td class="mono" style="color:var(--muted)">${v.ip}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px;">No visits yet</td></tr>';
+}
+
+if (sessionStorage.getItem(PASS_KEY)) showDashboard();
+</script>
+</body>
+</html>
