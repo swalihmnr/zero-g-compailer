@@ -10,8 +10,8 @@ import { ActiveUserService } from './services/activeUserService.js';
 import { initServices } from './controllers/compilerController.js';
 
 const app: Express = express();
-const PORT = 3001;
-const HOST = '127.0.0.1';
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
