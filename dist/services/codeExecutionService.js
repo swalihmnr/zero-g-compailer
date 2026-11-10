@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CodeExecutionService = void 0;
-const vm2_1 = require("vm2");
 const child_process_1 = require("child_process");
 const fs_1 = require("fs");
 const os_1 = require("os");
@@ -156,15 +155,34 @@ class CodeExecutionService {
         }
     }
     // ========================================================================
-    // TYPESCRIPT EXECUTION (esbuild + VM2)
+    // TYPESCRIPT EXECUTION (esbuild → Node subprocess)
     // ========================================================================
     async executeTypeScript(code) {
         try {
             const transpiled = (0, esbuild_1.transformSync)(code, {
                 loader: 'ts',
-                target: 'es2022'
+                target: 'es2022',
+                format: 'esm'
             });
-            return await this.executeJavaScript(transpiled.code);
+            return new Promise((resolve) => {
+                try {
+                    const tempDir = (0, fs_1.mkdtempSync)((0, path_1.join)((0, os_1.tmpdir)(), 'zerog-'));
+                    const filePath = (0, path_1.join)(tempDir, 'main.mjs');
+                    (0, fs_1.writeFileSync)(filePath, transpiled.code);
+                    (0, child_process_1.exec)(`node "${filePath}"`, { timeout: 10000 }, (error, stdout, stderr) => {
+                        this.cleanup(tempDir);
+                        if (error) {
+                            resolve({ output: stdout || '', error: stderr || error.message });
+                        }
+                        else {
+                            resolve({ output: stdout || '', error: stderr || undefined });
+                        }
+                    });
+                }
+                catch (err) {
+                    resolve({ output: '', error: `Execution Error: ${err.message}` });
+                }
+            });
         }
         catch (err) {
             return {
@@ -174,40 +192,26 @@ class CodeExecutionService {
         }
     }
     // ========================================================================
-    // JAVASCRIPT EXECUTION (VM2 Sandbox)
+    // JAVASCRIPT EXECUTION (Node subprocess — supports async/Promises/timers)
     // ========================================================================
     async executeJavaScript(code) {
         return new Promise((resolve) => {
-            let output = '';
-            let errorOutput = '';
             try {
-                const vm = new vm2_1.VM({
-                    timeout: 5000,
-                    sandbox: {
-                        console: {
-                            log: (...args) => {
-                                output += args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ') + '\n';
-                            },
-                            error: (...args) => {
-                                errorOutput += args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ') + '\n';
-                            },
-                            warn: (...args) => {
-                                output += '[WARN] ' + args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ') + '\n';
-                            }
-                        }
+                const tempDir = (0, fs_1.mkdtempSync)((0, path_1.join)((0, os_1.tmpdir)(), 'zerog-'));
+                const filePath = (0, path_1.join)(tempDir, 'main.js');
+                (0, fs_1.writeFileSync)(filePath, code);
+                (0, child_process_1.exec)(`node "${filePath}"`, { timeout: 10000 }, (error, stdout, stderr) => {
+                    this.cleanup(tempDir);
+                    if (error) {
+                        resolve({ output: stdout || '', error: stderr || error.message });
                     }
-                });
-                vm.run(code);
-                resolve({
-                    output: output || '',
-                    error: errorOutput || undefined
+                    else {
+                        resolve({ output: stdout || '', error: stderr || undefined });
+                    }
                 });
             }
             catch (err) {
-                resolve({
-                    output: output,
-                    error: errorOutput || err.message || 'Runtime Error'
-                });
+                resolve({ output: '', error: `Execution Error: ${err.message}` });
             }
         });
     }

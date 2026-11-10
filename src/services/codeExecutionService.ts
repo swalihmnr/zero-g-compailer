@@ -1,4 +1,3 @@
-import { VM } from 'vm2';
 import { exec } from 'child_process';
 import { writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -172,17 +171,35 @@ export class CodeExecutionService {
     }
 
     // ========================================================================
-    // TYPESCRIPT EXECUTION (esbuild + VM2)
+    // TYPESCRIPT EXECUTION (esbuild → Node subprocess)
     // ========================================================================
 
     private async executeTypeScript(code: string): Promise<ExecutionResult> {
         try {
             const transpiled = transformSync(code, {
                 loader: 'ts',
-                target: 'es2022'
+                target: 'es2022',
+                format: 'esm'
             });
 
-            return await this.executeJavaScript(transpiled.code);
+            return new Promise((resolve) => {
+                try {
+                    const tempDir = mkdtempSync(join(tmpdir(), 'zerog-'));
+                    const filePath = join(tempDir, 'main.mjs');
+                    writeFileSync(filePath, transpiled.code);
+
+                    exec(`node "${filePath}"`, { timeout: 10000 }, (error, stdout, stderr) => {
+                        this.cleanup(tempDir);
+                        if (error) {
+                            resolve({ output: stdout || '', error: stderr || error.message });
+                        } else {
+                            resolve({ output: stdout || '', error: stderr || undefined });
+                        }
+                    });
+                } catch (err: any) {
+                    resolve({ output: '', error: `Execution Error: ${err.message}` });
+                }
+            });
         } catch (err: any) {
             return {
                 output: '',
@@ -192,50 +209,26 @@ export class CodeExecutionService {
     }
 
     // ========================================================================
-    // JAVASCRIPT EXECUTION (VM2 Sandbox)
+    // JAVASCRIPT EXECUTION (Node subprocess — supports async/Promises/timers)
     // ========================================================================
 
     private async executeJavaScript(code: string): Promise<ExecutionResult> {
         return new Promise((resolve) => {
-            let output = '';
-            let errorOutput = '';
-
             try {
-                const vm = new VM({
-                    timeout: 5000,
-                    sandbox: {
-                        console: {
-                            log: (...args: any[]) => {
-                                output += args.map(arg =>
-                                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-                                ).join(' ') + '\n';
-                            },
-                            error: (...args: any[]) => {
-                                errorOutput += args.map(arg =>
-                                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-                                ).join(' ') + '\n';
-                            },
-                            warn: (...args: any[]) => {
-                                output += '[WARN] ' + args.map(arg =>
-                                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-                                ).join(' ') + '\n';
-                            }
-                        }
+                const tempDir = mkdtempSync(join(tmpdir(), 'zerog-'));
+                const filePath = join(tempDir, 'main.js');
+                writeFileSync(filePath, code);
+
+                exec(`node "${filePath}"`, { timeout: 10000 }, (error, stdout, stderr) => {
+                    this.cleanup(tempDir);
+                    if (error) {
+                        resolve({ output: stdout || '', error: stderr || error.message });
+                    } else {
+                        resolve({ output: stdout || '', error: stderr || undefined });
                     }
                 });
-
-                vm.run(code);
-
-                resolve({
-                    output: output || '',
-                    error: errorOutput || undefined
-                });
-
             } catch (err: any) {
-                resolve({
-                    output: output,
-                    error: errorOutput || err.message || 'Runtime Error'
-                });
+                resolve({ output: '', error: `Execution Error: ${err.message}` });
             }
         });
     }
